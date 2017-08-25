@@ -1,0 +1,60 @@
+---
+title: "Requirements"
+author: "Leonie Roos"
+date: "25/08/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data 
+
+
+## R
+Download or please update R to the latest version (or at least R version 3.4.0) from [here](https://www.r-project.org/).
+
+## RStudio 
+
+Download and install RStudio from the following link (if you already have RStudio, update to latest version): [RStudio weblink](https://www.rstudio.com/products/RStudio/#Desktop).
+
+## R Packages
+If asked to update packages (Update all/some/none [a/s/n]) - update all packages (answer a).
+
+### Bioconductor
+
+- Bioconductor
+
+```{r eval = FALSE}
+source("https://bioconductor.org/biocLite.R")
+biocLite()
+```
+
+- CAGEr
+
+```{r eval = FALSE}
+biocLite("CAGEr")
+```
+
+- BSgenome Hsapiences UCSC hg38
+
+```{r eval = FALSE}
+biocLite("BSgenome.Hsapiens.UCSC.hg38")
+```
+
+- heatmaps
+
+```{r eval = FALSE}
+biocLite("heatmaps")
+```
+
+- GenomicRanges, IRanges, Biostrings
+```{r eval = FALSE}
+biocLite("GenomicRanges")
+biocLite("IRanges")
+biocLite("Biostrings")
+```
+
+
+### CRAN
