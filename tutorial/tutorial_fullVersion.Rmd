@@ -1,0 +1,487 @@
+---
+title: "Going through CAGEr basic steps"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float: true
+---
+
+
+During this short tutorial we will go through a sample workflow with the [CAGEr](http://bioconductor.org/packages/release/bioc/html/CAGEr.html) R package (Haberle _et al._, 2015). Two samples were chosen at different stages in zebrafish development for this practical: 512 cell stage (~2,7 hours hpf) and Prim 6 (~24 hpf). These stages have been previously published by Nepal _et al_, 2013 and are also available in one of the R-packages that can be found [here](http://promshift.genereg.net/CAGEr/PackageSource/). 
+<br>
+<br>
+We will only go through all the standard functions and analyses of _CAGEr_ in this practical. In the following practicals of this workshop we will explore the data further.
+
+# Overview of this practical
+<br>
+  _CAGEr Analysis_
+
+* Import CAGE-seq data from bed files
+* Creating a CAGEset object 
+* Normalization
+* Create tag clusters of CTSSs
+* Assess promoter width
+* Create consensus clusters among samples
+* Global expression patterns
+* Promoter shifting
+* Export data
+* Create tracks
+* Create heatmaps
+
+
+# F6 CAGE-seq data 
+
+Here, I have downloaded four ctss.bed.gz files from the F6 server and converted these already to CTSS files for *CAGEr*. *CAGEr* accepts bed files but these need to contain a single line per tag so the same position will be in the file multiple times. This is not the format of F6 or F5, which is why we need to convert these files. The CTSS file is a tab separated file with no header and comprises four columns:
+
+- Chromosome name
+- 1-based coordinate of TSS
+- strand
+- number CAGE tags 
+
+## Code used to generate these files
+
+Do not run, this is the code I used for your information. The 0-based ctss.bed files are easily converted to 1-based CTSS files. Note that we are using the "end" position (column 3) now for the CTSS. The fifth column being the number of tags at that position.
+
+Linux:
+```{bash eval = FALSE}
+for f in `ls ../data/basic/ctssfiles/CN*` 
+do
+zcat $f | awk -v OFS='\t' '{print $1,$3,$6,$5}' > ../data/basic/ctsstables/table_$f.txt
+done
+```
+
+# Import CAGE-seq data into CAGEr
+
+We need to create a CAGEset object first. We will need to set the genome name, the paths to the input files (CTSS files in this case), what file type we're importing, and the sample labels. The code here will need the files to be in this directory to work: `../data/ctss_tables`. However, you can easily change that to where you have placed them.
+
+```{r eval = FALSE}
+### load the CAGEr package
+library(CAGEr)
+### BSgenome with the right version
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+### define where the ctss.bed files provided are located for CAGEr
+# where the files can be found
+pathsToInputFiles <- list.files("../data/ctss_tables", full.names = TRUE)
+# samples in there:
+basename(pathsToInputFiles)
+
+### creating a CAGEset object 
+myCAGEset <- new("CAGEset", genomeName = "BSgenome.Hsapiens.UCSC.hg19", inputFiles = pathsToInputFiles, inputFilesType = "ctss", sampleLabels = paste("skin_",1:4, sep = ""))
+```
+
+So this is now a still empty object and you can check what it contains at the moment:
+
+```{r eval = FALSE}
+# you can check the object:
+myCAGEset
+```
+
+Now we are ready upload the CTSS files and get the CTSSs:
+
+```{r eval = FALSE}
+### reading in the data 
+getCTSS(myCAGEset)
+```
+
+Do check the object again and see what's been filled in!
+
+As you can see the S4 object contains slots to store the data as we go along.
+
+## A more detailed look at the slot of CTSS information
+
+We access this slot is with the function `CTSStagCount(myCAGEset)`. Type it in and see what class it returns, and see what it looks like.
+
+```{r eval = FALSE}
+# get a dataframe of ctss counts:
+ctss <- CTSStagCount(myCAGEset)
+head(ctss)
+```
+
+Which samples are in there again?
+```{r eval = FALSE}
+sample_names <- sampleLabels(myCAGEset)
+```
+
+The names of this vector are the colours assigned to each sample when we use any of the plot functions of the package! 
+
+# Different library sizes - normalization
+
+At this stage we only have Cage TSS (CTSS) information. The slot of Normalized tpm is still empty (as is the rest of the object). Let's look at the raw data more closely!
+
+## Correlation & library sizes
+
+What is the correlation of CTSS between all the samples? One easy way to find out with `plotCorrelation()`. If we assign the function we can save the matrix table and plot your own style of plots here. The plot will be in the working directory. Check out the matrix!
+
+```{r eval = FALSE}
+### creating a correlation plot and table of the samples
+corr.m <- plotCorrelation(myCAGEset, samples = "all", method = "pearson")  
+```
+
+At this point we have the actual tag counts per CTSS. Do we have different library sizes for these samples? To check our library sizes use `librarySizes()` on our cageset.
+
+
+```{r eval = FALSE}
+# check library sizes
+librarySizes(myCAGEset)
+```
+
+Remember this is only chromosome 3 per sample. 
+
+To make samples comparable, we will need to normalize our data. _CAGEr_ offers both a _tags per million normalization_ and a _power-law based normalization_. Because many CAGE-seq data follow a power-law distrubtion (Balwierz _et al._, 2009), we'll use the power-law based normalization here.
+<br>
+First we need to plot the reverse cumulatives with `plotReverseCumulatives()` if they actually follow this distribution. On the log-log scale, this reverse cumulative distribution will manifest as a monotonically decreasing linear function of which the slope (alpha) is determined per sample.
+
+```{r, eval = FALSE}
+# normalisation first plot to assess alpha
+plotReverseCumulatives(myCAGEset, fitInRange = c(5, 1000), onePlot = TRUE) 
+```
+
+From this we can see the alpha for each sample. Select the alpha for the normalization step, the `normalizeTagCount()` function when method = "powerlaw". <br> <br>
+What is the average alpha of the two samples? Is that the "Ref distribution" in the plot?
+
+```{r eval = FALSE}
+normalizeTagCount(myCAGEset, method = "powerLaw", fitInRange = c(5, 1000), alpha = 1.20, T = 1*10^5)
+```
+
+We can plot this again to observe the change; now using the normalised tpm slot with `values = "normalized"`.
+
+Let's check our object again, what is added and in which slot?
+
+> ! We have used a different "T" than you would if the complete genome was there: T = 1*10^6
+
+# Defining tag clusters (TCs)
+
+CTSS' in close proximity of each other give rise to functionally similar set of transcripts within the same promoter elements. Thus, they are basically larger transcriptional units that correspond to individual promoters. 
+
+To capture these, tag clusters (TC) of CTSS' can be easily defined within _CAGEr_ with the function: `clusterCTSS()`. Run the code below to see the information in the viewer
+```{r, eval=FALSE}
+?clusterCTSS
+```
+
+We will use a simple distance measurement (method = "distclu"). This means that the true distance in bp between individual CTSS is used. Let's set this at 20 bp (maxDist = 20), so that  individual CTSS can not be more than 20 bp apart to form the TC. 
+
+We also set the threshold at 1, which means that each CTSS should have 2 or more tag counts in all the samples prior to clustering so as to exclude low fidelity CTSSs. 
+
+Finally, no TC are to be called comprised of a single CTSS if the normalized signal is below 5:
+
+```{r, eval = FALSE}
+clusterCTSS(object = myCAGEset, 
+            threshold = 1, 
+            thresholdIsTpm = TRUE, 
+            nrPassThreshold = 1, 
+            method = "distclu", 
+            maxDist = 20, 
+            removeSingletons = TRUE, 
+            keepSingletonsAbove = 5)
+```
+
+> Keep in mind that these are determined per sample
+
+Have a look again at the myCAGEset!
+
+## Width of TCs
+
+Another feature we can determine with _CAGEr_ is the promoter width. That is in this case, the width of each tag cluster per sample. To have a width more robust to low tag count outliers, _CAGEr_ can determine the width based on a set of quantiles of the cumulative distribution of tag signal per TC. See the figure below.
+![cumulative promoter](../images/PromoterWidth.png)
+
+Generally, the width of a TC (promoter) is set between the quantiles 0.1 and 0.9 to capture 80% of CTSS within the TC. To determine the width we follow these two steps:
+
+  1. Calculate the cumulative distribution per TC (`cumulativeCTSSdistribution()`)
+  2. Determine the quantile positions for each TC (`quantilePositions()`) 
+
+> These are the most time consuming steps within _CAGEr_
+
+```{r eval = FALSE}
+cumulativeCTSSdistribution(myCAGEset, clusters = "tagClusters")
+quantilePositions(myCAGEset, clusters = "tagClusters", qLow = 0.1, qUp = 0.9)
+```
+
+We can easily plot a histogram of the interquantile widths per sample with _CAGEr_ too:
+```{r eval = FALSE}
+plotInterquantileWidth(myCAGEset, 
+                       clusters = "tagClusters",
+                       tpmThreshold = 3, 
+                       qLow = 0.1, 
+                       qUp = 0.9)
+```
+
+# TCs across samples? Consensus Clusters!
+
+Until now, we have determined the TC and the width of those per individual sample. However, TCs are often sample-specific. This could mean that they are present in one sample but not in the other. More so, TCs do not coincide perfectly within the same region but overlap each other as well as the possibility of more than one TC in one sample and a less amount of TC in the other but larger in width (we'll visualize an example of this later today). 
+
+When we want to compare transcriptional activity across samples, regions that encompass the TCs across the samples are needed. These are called ___consensus clusters___ that are aggregates of TCs from all samples. The function in _CAGEr_: `aggregateTagClusters()`. 
+
+These we will define and add these to our myCAGEset object. We specify that the maximum distance is a 100 bp between the TCs (with the coordinates of quantile 0.1 and quantile 0.9) across the samples.
+
+
+```{r eval = FALSE}
+aggregateTagClusters(myCAGEset, 
+                     tpmThreshold = 5, 
+                     qLow = 0.1, 
+                     qUp = 0.9, 
+                     maxDist = 100)
+```
+
+# TC Expression - Self organising maps
+
+CAGE signals are essentially measuring transcription starting from single CTSS and thus the transcription levels can be assessed. This can be done per CTSSs, TCs, or consensus clusters. 
+
+_CAGEr_ offers two methods to cluster gene expression to identify gene expression patterns:
+
+- k-means clustering
+- self-organising maps (SOM)
+
+Both require the number of expression clusters to be known _a priori_. 
+
+Here we will perform the SOM algorithm at consensus cluster level for our four samples to identify expression patterns. We set the threshold to > 10 tpm (normalized) in at least _one sample_ to make sure we have robustly expressed TCs within the consensus clusters. 
+
+The function is `getExpressionProfiles()` and in here we define that we expect in this case 4 clusters (`xDim = 2, yDim = 2`).
+
+```{r eval = FALSE}
+getExpressionProfiles(myCAGEset, 
+                      what = "consensusClusters", 
+                      tpmThreshold = 10,
+                      nrPassThreshold = 1, 
+                      method = "som", 
+                      xDim = 2, 
+                      yDim = 2)
+
+# plot it too
+plotExpressionProfiles(myCAGEset, what = "consensusClusters")
+```
+
+What happens if you change the tpmThreshold? Or change the xDim and yDim?
+
+Subsequently, a character vector of the expression classes can be extracted from the cageset. This will be the same order as the consensus clusters.
+
+```{r eval = FALSE}
+expr.clus = expressionClasses(myCAGEset, what = "consensusClusters")
+```
+
+# Promoter shifting
+Promoter shifting is described by Haberle _et al_, 2014. They've shown that the same promoter can be used differently in samples at different times in development. The method from this paper has been implemented in _CAGEr_. Shifting can be detected between two individual samples. If there are more than two samples, they can be merged per group (if possible) and then two groups are then compared. 
+
+The shifting uses, similary to determining promoter width, the cumulative distribution per sample of CAGE signal (here: within the consensus clusters). The difference between the cumulative distributions is calculated as a _shifting score_ (see figure below). Additionally, a Kolmogorov-Smirnov test on the cumulative distributions is performed to give a general assessment of differential TSS usage.
+
+<img src="../images/shiftingScore.png" width="550">
+
+ 
+We will start by determing the cumulative distributions along all consensus clusters:
+
+```{r, eval = FALSE}
+cumulativeCTSSdistribution(myCAGEset, clusters = "consensusClusters")
+```
+
+Determine the shifting score with `scoreShift()`. The variables include our myCAGEset, as well as the sample labels of the samples we want to compare (`groupX, groupY`), and use the normalized tag counts by `useTpmKS = TRUE`.
+
+```{r, eval = FALSE}
+scoreShift(myCAGEset, 
+           groupX = sample_names[1], 
+           groupY = sample_names[2], 
+           testKS = TRUE, 
+           useTpmKS = TRUE)
+```
+
+__Positive values__ are interpreted as the proportion of transcription initiation in the sample with lower expression that is happening "outside" (either upstream or downstream) of the region used for transcription initiation in the other sample.
+Whereas __negative values__ indicate no physical separation, the region used for transcription initiation in the sample with lower expression is completely contained within the region of other sample.
+<br> <br>
+
+The two sample Kolmogorov-Smirnov (K-S) test determines if the two probability distributions are different. The cumulative sums in both samples are scaled to range
+between 0 and 1. In our example by setting `testKS = TRUE`, the normalized tpm values were used (if FALSE, raw tag counts are used). The p-values are already corrected for multiple testing (Benjamini and Hochenberg) and a false discovery rate (FDR) is determined for each p-value. 
+<br> <br>
+
+These values are all again stored in our object. The retrieve only the shifting promoters as a dataframe we can set a few tresholds:
+
+  - `tpmThreshold`
+  - `scoreThreshold` (shifting score)
+  - `fdrThreshold`
+  
+Here we will set the threshold of shifting score at 0.6 like the original paper as well as setting the FDR at 0.01:
+
+```{r eval = FALSE}
+shifting.promoters <- getShiftingPromoters(myCAGEset, 
+                                           tpmThreshold = 5, 
+                                           scoreThreshold = 0.6, 
+                                           fdrThreshold = 0.01)
+```
+
+What is stored in this dataframe?
+
+# Create and Export tracks
+So now we went through all the functions and completed a myCAGEset with all the analysis slots filled in. In this (short) part, we will export data from this object for use for visualisation in a genome browser.
+
+## CTSS visualization track
+
+_CAGEr_ can create bedGraph files with tracks of CTSS signal. It will give you two sets of tracks _per sample_: one of the plus strand and one for the minus strand. The function is `exportCTSStoBedGraph()` where we can specify if we want the normalized or raw tag counts. 
+It needs:
+
+* `object` 
+* `values` - "raw" or "normalized"
+* `format` - "BigWig" or "bedGraph"
+* `oneFile` - TRUE or FALSE to be exported in the same file (for bedGraph) 
+
+Let's export then the normalized tag counts for both our samples in one file:
+
+```{r, eval =FALSE}
+exportCTSStoBedGraph(myCAGEset,
+                     values = "normalized",
+                     format = "bedGraph",
+                     oneFile = TRUE)
+```
+
+This is one file with each of the samples concatenated. Each will start with the `track name=` line for the genome browser, followed by the bed coordinates and the normalized tag count values for the height of the bar. 
+
+
+## TC width visualization in genome browser
+
+The interquantile width per TC that we determined earlier (between 0.1 and 0.9) can also be visualized in the genome browser as a gene-like representation. For this, we are exporting it in a bed file format by using `exportToBed()`
+
+
+```{r, eval = FALSE}
+exportToBed(object = myCAGEset, 
+            what = "tagClusters",
+            qLow = 0.1, 
+            qUp = 0.9, 
+            oneFile = TRUE)
+```
+
+## Other formats
+
+Please use the ? to see which other formats can be exported!
+
+# Looking for shared features - Heatmaps
+
+Lastly, we can visualize the sequence surrounding the dominant CTSS using density heatmaps. To this end, we'll use the package _heatmaps_. We need to prepare the data first:
+
+* The genomic position of dominant TSS of each TC in GRanges 
+* Add 500 bp up and downstream of TSS as start and end
+* Attach the sequence 500 up and downstream of the site
+* Determine the order with interquantile widths
+* Plot heatmap
+
+Remember that this is _per sample_ so we'll be using lists in R to apply functions to, so each sample will be prepared the same.
+
+First things first, what are the dominant TSSs of each TC? Use `tagClusters()`. This allows us to extract per sample the TCs. Assign it to `tc` and get familiar with the output.
+
+```{r eval = FALSE}
+# What were the samples again? let's store this in a vector
+samples <- unname(sampleLabels(myCAGEset))
+# TCs
+tc <- tagClusters(myCAGEset, sample = samples[1], returnInterquantileWidth = TRUE, qLow = 0.1, qUp = 0.9)  
+head(tc)
+
+```
+
+Let's create a function to do this for each sample:
+
+```{r eval = FALSE}
+samples <- unname(sampleLabels(myCAGEset))
+
+# function
+read.tcs <- function(samplename, cageObj){
+  tc <- tagClusters(cageObj, sample = samplename, returnInterquantileWidth = TRUE, qLow = 0.1, qUp = 0.9)  
+  return(tc)
+}
+
+tc.list <- lapply(samples, read.tcs, cageObj = myCAGEset)
+names(tc.list) <- samples # let's name it so we can't make mistakes later on
+```
+
+Make a GRanges object of dominant CTSS positions and add 500 bp up and down stream. 
+
+```{r eval = FALSE}
+# function
+toGRanges <- function(tc_list){
+  out <- GRanges(seqnames = tc_list$chr,
+                 ranges = IRanges(start = tc_list$dominant_ctss, end = tc_list$dominant_ctss),
+                 strand = tc_list$strand,
+                 seqlengths = seqlengths(Hsapiens))
+  values(out) <- tc_list[,"interquantile_width"]
+  return(out)
+}
+
+# apply it to tc.list
+tc.granges <- lapply(tc.list, toGRanges)
+
+# not that I included "interquantile_width" as value too, for easy sorting later on
+
+# adding the bp up and downstream:
+getFlanks <- function(granges.list, up, down){
+  out <- promoters(granges.list, upstream = up, downstream = down)
+  return(out)
+}
+
+tc.flank.gr <- lapply(tc.granges, getFlanks, up = 500, down = 500)
+```
+
+For this package it needs equal window sizes. Therefore, if the addition of 500 bp up or falls outside the chromosome, it not only needs to be 'trimmed' but also removed. 
+
+```{r eval = FALSE}
+tcs <- lapply(tc.flank.gr, function(gr.single){
+  out <- gr.single[width(trim(gr.single)) == 1000] # keep only if width = 1000
+  return(out)
+})
+```
+
+Now because we don't have many TCs here, we will concatunate the samples all together to improve the visual quality of the heatmap:
+
+```{r eval = FALSE}
+tcs.all <- c(tcs[[1]], tcs[[2]], tcs[[3]], tcs[[4]])
+```
+
+Now we can extract the sequence easily with `getSeq`
+
+```{r eval = FALSE}
+hseq <- getSeq(Hsapiens, tcs.all)
+```
+
+Ok, we got our sequences and are ready to start plotting! We will order to interquantile width of the TCs as previous publications.
+
+```{r, eval = FALSE, message = FALSE, warning = FALSE}
+library(heatmaps)
+
+### ordering on interquantile width:
+or = order(tcs.all$X) # the quantile width column added
+fa = hseq[or] # zf sequences reordered
+
+
+
+# function to smooth (see the vignette) 
+SmoothPatternHM = function(seq, pattern, ...) {
+    hm = PatternHeatmap(seq, pattern, ...)
+    smoothHeatmap(hm, output.size=c(350, 500))
+}
+
+coords = c(-500,500)
+
+hm_list = list(
+    ta=SmoothPatternHM(fa, "TA", coords=coords),
+    cg=SmoothPatternHM(fa, "CG", coords=coords),
+    ww=SmoothPatternHM(fa, "WW", coords=coords),
+    ss=SmoothPatternHM(fa, "SS", coords=coords)
+)
+
+# plot
+print(plotHeatmapList(hm_list))
+```
+
+
+
+
+# Empty R environment
+```{r eval = FALSE}
+rm(list = ls() )
+```
+
+
+# Session Info
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+
+
+
+
