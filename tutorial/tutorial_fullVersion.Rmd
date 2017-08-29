@@ -8,13 +8,12 @@ output:
 ---
 
 
-During this short tutorial we will go through a sample workflow with the [CAGEr](http://bioconductor.org/packages/release/bioc/html/CAGEr.html) R package (Haberle _et al._, 2015). Two samples were chosen at different stages in zebrafish development for this practical: 512 cell stage (~2,7 hours hpf) and Prim 6 (~24 hpf). These stages have been previously published by Nepal _et al_, 2013 and are also available in one of the R-packages that can be found [here](http://promshift.genereg.net/CAGEr/PackageSource/). 
-<br>
-<br>
-We will only go through all the standard functions and analyses of _CAGEr_ in this practical. In the following practicals of this workshop we will explore the data further.
+During this short tutorial we will go through a sample workflow with the [CAGEr](http://bioconductor.org/packages/release/bioc/html/CAGEr.html) R package (Haberle _et al._, 2015). 
+
+We will only go through all the standard functions and analyses of _CAGEr_ in this practical. 
 
 # Overview of this practical
-<br>
+
   _CAGEr Analysis_
 
 * Import CAGE-seq data from bed files
