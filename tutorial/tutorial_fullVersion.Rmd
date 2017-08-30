@@ -63,8 +63,6 @@ library(BSgenome.Hsapiens.UCSC.hg38)
 ### define where the ctss.bed files provided are located for CAGEr
 # where the files can be found
 pathsToInputFiles <- list.files("../data/ctss_tables", full.names = TRUE)
-# samples in there:
-basename(pathsToInputFiles)
 
 ### creating a CAGEset object 
 myCAGEset <- new("CAGEset", genomeName = "BSgenome.Hsapiens.UCSC.hg19", inputFiles = pathsToInputFiles, inputFilesType = "ctss", sampleLabels = paste("skin_",1:4, sep = ""))
